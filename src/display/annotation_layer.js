@@ -50,6 +50,9 @@ class AnnotationElementFactory {
       case AnnotationType.TEXT:
         return new TextAnnotationElement(parameters);
 
+      case AnnotationType.FREETEXT:
+        return new FreeTextAnnotationElement(parameters);
+
       case AnnotationType.WIDGET:
         let fieldType = parameters.data.fieldType;
 
@@ -79,6 +82,9 @@ class AnnotationElementFactory {
 
       case AnnotationType.CIRCLE:
         return new CircleAnnotationElement(parameters);
+
+      case AnnotationType.INK:
+        return new InkAnnotationElement(parameters);
 
       case AnnotationType.POLYLINE:
         return new PolylineAnnotationElement(parameters);
@@ -377,6 +383,70 @@ class TextAnnotationElement extends AnnotationElement {
   }
 }
 
+class FreeTextAnnotationElement extends AnnotationElement {
+  constructor(parameters) {
+    let isRenderable = !!(parameters.data.hasPopup ||
+                          parameters.data.title || parameters.data.contents);
+    super(parameters, isRenderable, /* ignoreBorder = */ true);
+
+    this.containerClassName = 'freeTextAnnotation';
+    this.svgElementName = 'svg:text';
+  }
+
+  /**
+   * Render the freetext annotation's HTML element in the empty container.
+   *
+   * @public
+   * @memberof FreeTextAnnotationElement
+   * @returns {HTMLSectionElement}
+   */
+  render() {
+    this.container.className = this.containerClassName;
+
+    let data = this.data;
+
+    let div = document.createElement('div');
+
+    let style = '';
+    if (data.textColor) {
+      let textColor = Util.makeCssRgb(data.textColor[0] | 0,
+                                      data.textColor[1] | 0,
+                                      data.textColor[2] | 0);
+      style += 'color: ' + textColor + ';';
+    }
+
+    if (data.fontSize) {
+      style += 'font-size: ' + data.fontSize + 'pt;';
+    }
+
+    if (data.textStyle) {
+      let matchFont = data.textStyle.match(/(.*;?)font:\s*([^;]+);?\s*(.*)/);
+      if (matchFont !== null && matchFont.length === 4) {
+        data.textStyle = matchFont[1] + matchFont[3];
+        let font = matchFont[2];
+        let matchFontSize = font.match(/(.*)([0-9]+(pt|px|em|rem|cm))(.*)/);
+        if (matchFontSize !== null && matchFontSize.length === 5) {
+          style += 'font-size: ' + matchFontSize[2] + ';';
+          font = matchFontSize[1] + matchFontSize[4];
+        }
+        style += 'font-family: ' + font + ';';
+      }
+
+      style += data.textStyle + ';';
+    }
+
+    div.setAttribute('style', style);
+
+    div.innerHTML = data.contents;
+
+    this.container.append(div);
+
+    this._createPopup(this.container, div, data);
+
+    return this.container;
+  }
+}
+
 class WidgetAnnotationElement extends AnnotationElement {
   /**
    * Render the widget annotation's HTML element in the empty container.
@@ -628,7 +698,15 @@ class PopupAnnotationElement extends AnnotationElement {
   render() {
     // Do not render popup annotations for parent elements with these types as
     // they create the popups themselves (because of custom trigger divs).
-    const IGNORE_TYPES = ['Line', 'Square', 'Circle', 'PolyLine', 'Polygon'];
+    const IGNORE_TYPES = [
+      'FreeText',
+      'Line',
+      'Square',
+      'Circle',
+      'Ink',
+      'PolyLine',
+      'Polygon'
+    ];
 
     this.container.className = 'popupAnnotation';
 
@@ -932,6 +1010,72 @@ class CircleAnnotationElement extends AnnotationElement {
     // Create the popup ourselves so that we can bind it to the circle instead
     // of to the entire container (which is the default).
     this._createPopup(this.container, circle, data);
+
+    return this.container;
+  }
+}
+
+class InkAnnotationElement extends AnnotationElement {
+  constructor(parameters) {
+    let isRenderable = !!(parameters.data.hasPopup ||
+                          parameters.data.title || parameters.data.contents);
+    super(parameters, isRenderable, /* ignoreBorder = */ true);
+
+    this.containerClassName = 'inkAnnotation';
+    this.svgElementName = 'svg:polyline';
+  }
+
+  /**
+   * Render the ink annotation's HTML element in the empty container.
+   *
+   * @public
+   * @memberof InkAnnotationElement
+   * @returns {HTMLSectionElement}
+   */
+  render() {
+    this.container.className = this.containerClassName;
+
+    // Create an invisible polyline with the same points that acts as the
+    // trigger for the popup.
+    let data = this.data;
+    let width = data.rect[2] - data.rect[0];
+    let height = data.rect[3] - data.rect[1];
+    let svg = this.svgFactory.create(width, height);
+    let strokeColor = Util.makeCssRgb(data.color[0] | 0,
+                                      data.color[1] | 0,
+                                      data.color[2] | 0);
+
+    let inkLists = data.inkLists;
+    for (let i = 0, ii = inkLists.length; i < ii; i++) {
+      let inkListItem = inkLists[i];
+      let points = [];
+
+      // Convert the inkListItem array to a single points string that the SVG
+      // polyline element expects ("x1,y1 x2,y2 ..."). PDF coordinates are
+      // calculated from a bottom left origin, so transform the polyline
+      // coordinates to a top left origin for the SVG element.
+      for (let j = 0, jj = inkListItem.length; j < jj; j++) {
+        let x = inkListItem[j].x - data.rect[0];
+        let y = data.rect[3] - inkListItem[j].y;
+        points.push(x + ',' + y);
+      }
+
+      points = points.join(' ');
+
+      let polyline = this.svgFactory.createElement(this.svgElementName);
+      polyline.setAttribute('points', points);
+      polyline.setAttribute('stroke-width', '1');
+      polyline.setAttribute('stroke', strokeColor);
+      polyline.setAttribute('fill', 'none');
+
+      svg.appendChild(polyline);
+    }
+
+    this.container.append(svg);
+
+    // Create the popup ourselves so that we can bind it to the polyline
+    // instead of to the entire container (which is the default).
+    this._createPopup(this.container, svg, data);
 
     return this.container;
   }

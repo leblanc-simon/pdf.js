@@ -72,6 +72,9 @@ class AnnotationFactory {
       case 'Text':
         return new TextAnnotation(parameters);
 
+      case 'FreeText':
+        return new FreeTextAnnotation(parameters);
+
       case 'Widget':
         let fieldType = getInheritableProperty({ dict, key: 'FT', });
         fieldType = isName(fieldType) ? fieldType.name : null;
@@ -99,6 +102,9 @@ class AnnotationFactory {
 
       case 'Circle':
         return new CircleAnnotation(parameters);
+
+      case 'Ink':
+        return new InkAnnotation(parameters);
 
       case 'PolyLine':
         return new PolylineAnnotation(parameters);
@@ -897,6 +903,22 @@ class TextAnnotation extends Annotation {
   }
 }
 
+class FreeTextAnnotation extends Annotation {
+  constructor(parameters) {
+    super(parameters);
+
+    this.data.annotationType = AnnotationType.FREETEXT;
+
+    let dict = parameters.dict;
+
+    this.data.textColor = dict.getArray('TextColor');
+    this.data.textStyle = dict.get('DS');
+    this.data.fontSize = dict.get('FontSize');
+
+    this._preparePopup(dict);
+  }
+}
+
 class LinkAnnotation extends Annotation {
   constructor(params) {
     super(params);
@@ -977,6 +999,34 @@ class CircleAnnotation extends Annotation {
 
     this.data.annotationType = AnnotationType.CIRCLE;
     this._preparePopup(parameters.dict);
+  }
+}
+
+class InkAnnotation extends Annotation {
+  constructor(parameters) {
+    super(parameters);
+
+    this.data.annotationType = AnnotationType.INK;
+
+    // The rawInkList items array is an array of numbers representing
+    // the alternating horizontal and vertical coordinates, respectively,
+    // of each vertex.
+    // Convert this to an array of objects with x and y coordinates.
+    let dict = parameters.dict;
+    let rawInkLists = dict.getArray('InkList');
+
+    this.data.inkLists = [];
+    for (let i = 0, ii = rawInkLists.length; i < ii; ++i) {
+      this.data.inkLists.push([]);
+      for (let j = 0, jj = rawInkLists[i].length; j < jj; j += 2) {
+        this.data.inkLists[i].push({
+          x: rawInkLists[i][j],
+          y: rawInkLists[i][j + 1],
+        });
+      }
+    }
+
+    this._preparePopup(dict);
   }
 }
 
